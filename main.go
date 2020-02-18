@@ -11,6 +11,7 @@ import (
 	"log"
 	"strconv"
 	"strings"
+	"time"
 
 	_ "github.com/go-sql-driver/mysql"
 )
@@ -25,21 +26,23 @@ func main() {
 	db := HandleConnectDB()
 
 	// Count entries to convert so we know what size to make the array.
+	log.Println("Counting entries...")
 	var totalEntries uint
 	row := db.QueryRow("SELECT COUNT(*) FROM `item_instance`")
 	if err := row.Scan(&totalEntries); err != nil {
-		panic(err)
+		log.Println(err)
 	}
 
 	if totalEntries == 0 {
-		fmt.Println("No entries in `item_instance`. Exiting.")
+		log.Println("No entries in `item_instance`. Exiting.")
 		return
 	}
+	log.Printf("Counted %v entries.\n\n", totalEntries)
 
-	fmt.Println("Loading all item instance entries...")
+	log.Println("Loading all item instance entries...")
 	rows, err := db.Query("SELECT `data` FROM `item_instance`")
 	if err != nil {
-		panic(err)
+		log.Println(err)
 	}
 
 	// Create slice with capacity for all entries.
@@ -49,14 +52,15 @@ func main() {
 	for rows.Next() {
 		err = rows.Scan(&data)
 		if err != nil {
-			panic(err)
+			log.Println(err)
 		}
 
 		blobResults = append(blobResults, data)
 	}
-	fmt.Printf("Collected %v entries to be converted.\n", len(blobResults))
+	log.Printf("Loaded.\n\n")
 
-	fmt.Println("Beginning parse...")
+	parseStart := time.Now()
+	log.Println("Beginning parse... this may take a minute or two.")
 
 	// Way faster than concatenating strings
 	var entireQuery strings.Builder
@@ -92,15 +96,19 @@ func main() {
 		}
 		entireQuery.WriteString("\n")
 	}
-	fmt.Println("Done parsing.")
 	db.Close()
 
-	fmt.Println("Writing full query to file: item_instance_converted.sql")
+	timeElapsed := time.Since(parseStart)
+	log.Printf("Done parsing in %v\n\n", timeElapsed.String())
+
+	log.Println("Writing full query to file: item_instance_converted.sql")
 
 	queryAsBytes := bytes.NewBufferString(entireQuery.String()).Bytes()
-	ioutil.WriteFile("item_instance_converted.sql", queryAsBytes, 0644)
+	if err = ioutil.WriteFile("item_instance_converted.sql", queryAsBytes, 0644); err != nil {
+		log.Fatal("Failed to write file! Check permissions.")
+	}
 
-	fmt.Println("Done.")
+	log.Println("Done.")
 }
 
 func ParseDataBlob(blob string) string {
@@ -160,7 +168,7 @@ func ParseDataBlob(blob string) string {
 func stringToUint32(str string) uint32 {
 	result, err := strconv.ParseUint(str, 10, 32)
 	if err != nil {
-		panic(err)
+		log.Println(err)
 	}
 
 	return uint32(result)
@@ -184,6 +192,9 @@ func HandleConnectDB() *sql.DB {
 	fmt.Println("Database:")
 	fmt.Scanf("%s", &database)
 
+	fmt.Println()
+	log.Println("Connecting to database...")
+
 	var connStr string
 	connStr += user
 	connStr += ":" + pass
@@ -200,6 +211,8 @@ func HandleConnectDB() *sql.DB {
 	if err != nil {
 		log.Fatal("Couldn't connect to DB:", err)
 	}
+
+	log.Println("Database connection established.\n")
 
 	return session
 }

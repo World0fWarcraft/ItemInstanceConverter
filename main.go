@@ -16,6 +16,8 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 )
 
+const EntriesPerInsert = 25000
+
 func main() {
 	fmt.Println("\n\n####################################################")
 	fmt.Println("# BACKUP YOUR DATABASE BEFORE RUNNING THIS SCRIPT! #")
@@ -82,17 +84,19 @@ func main() {
 	entireQuery.WriteString(" ADD `durability` INT(10) UNSIGNED NOT NULL DEFAULT '0' AFTER `randomPropertyId`,\n")
 	entireQuery.WriteString(" ADD `itemTextId` MEDIUMINT(8) UNSIGNED NOT NULL DEFAULT '0' AFTER `durability`;\n\n")
 
-	entireQuery.WriteString("INSERT INTO `item_instance` VALUES \n")
-
 	for i := range blobResults {
+		if i%EntriesPerInsert == 0 {
+			entireQuery.WriteString("INSERT INTO `item_instance` VALUES \n")
+		}
+
 		blob := blobResults[i]
 
 		entireQuery.WriteString(ParseDataBlob(blob))
 
-		if i != len(blobResults)-1 {
-			entireQuery.WriteString(",")
+		if i == len(blobResults)-1 || (i > 0 && (i+1)%EntriesPerInsert == 0) {
+			entireQuery.WriteString(";\n")
 		} else {
-			entireQuery.WriteString(";")
+			entireQuery.WriteString(",")
 		}
 		entireQuery.WriteString("\n")
 	}

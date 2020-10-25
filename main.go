@@ -24,6 +24,8 @@ func main() {
 	fmt.Println("####################################################")
 	fmt.Println()
 
+	PromptExpansionSelection()
+
 	// Prompt user for DB info and connect.
 	db := HandleConnectDB()
 
@@ -82,7 +84,15 @@ func main() {
 	entireQuery.WriteString(" ADD `enchantments` TEXT NOT NULL AFTER `flags`,\n")
 	entireQuery.WriteString(" ADD `randomPropertyId` INT(11) NOT NULL DEFAULT '0' AFTER `enchantments`,\n")
 	entireQuery.WriteString(" ADD `durability` INT(10) UNSIGNED NOT NULL DEFAULT '0' AFTER `randomPropertyId`,\n")
-	entireQuery.WriteString(" ADD `itemTextId` MEDIUMINT(8) UNSIGNED NOT NULL DEFAULT '0' AFTER `durability`;\n\n")
+
+	switch chosenExp {
+	case ExpVanilla:
+		fallthrough
+	case ExpTBC:
+		entireQuery.WriteString(" ADD `itemTextId` MEDIUMINT(8) UNSIGNED NOT NULL DEFAULT '0' AFTER `durability`;\n\n")
+	case ExpWotLK:
+		entireQuery.WriteString(" ADD `playedTime` INT(10) UNSIGNED NOT NULL DEFAULT '0' AFTER `durability`;\n\n")
+	}
 
 	for i := range blobResults {
 		if i%EntriesPerInsert == 0 {
@@ -117,18 +127,17 @@ func main() {
 
 func ParseDataBlob(blob string) string {
 	values := strings.Split(blob, " ")
-
-	var itemGuid = values[0]
-	var itemEntry = values[3]
-	var ownerGuid = uint64(stringToUint32(values[6]))
-	var creatorGuid = uint64(stringToUint32(values[10]))
-	var giftCreator = uint64(stringToUint32(values[12]))
-	var stackCount = values[14]
-	var duration = values[15]
+	var itemGuid = values[fieldIndex(fieldItemGuid)]
+	var itemEntry = values[fieldIndex(fieldItemEntry)]
+	var ownerGuid = uint64(stringToUint32(values[fieldIndex(fieldOwnerGuid)]))
+	var creatorGuid = uint64(stringToUint32(values[fieldIndex(fieldCreatorGuid)]))
+	var giftCreator = uint64(stringToUint32(values[fieldIndex(fieldGiftCreator)]))
+	var stackCount = values[fieldIndex(fieldStackCount)]
+	var duration = values[fieldIndex(fieldDuration)]
 
 	var spellCharges string
-	for i := 16; i < 21; i++ {
-		if i != 16 {
+	for i := fieldIndex(fieldSpellChargesStart); i < fieldIndex(fieldSpellChargesEnd); i++ {
+		if i != fieldIndex(fieldSpellChargesStart) {
 			spellCharges += " "
 		}
 
@@ -136,11 +145,11 @@ func ParseDataBlob(blob string) string {
 		spellCharges += fmt.Sprintf("%d", int32(stringToUint32(values[i])))
 	}
 
-	var flags = values[21]
+	var flags = values[fieldIndex(fieldFlags)]
 
 	var enchantments string
-	for i := 22; i < 55; i++ {
-		if i != 22 {
+	for i := fieldIndex(fieldEnchantmentsStart); i < fieldIndex(fieldEnchantmentsEnd); i++ {
+		if i != fieldIndex(fieldEnchantmentsStart) {
 			enchantments += " "
 		}
 
@@ -148,9 +157,20 @@ func ParseDataBlob(blob string) string {
 		enchantments += values[i]
 	}
 
-	var randomPropertyId = int32(stringToUint32(values[56])) // Stored as uint32, but we want int32 representation.
-	var textId = values[57]
-	var durability = values[58]
+	var randomPropertyId = int32(stringToUint32(values[fieldIndex(fieldRandomPropertyId)])) // Stored as uint32, but we want int32 representation.
+	var textId = values[fieldIndex(fieldTextId)]                                            // Vanilla/TBC
+	var playedTime = values[fieldIndex(fieldPlayedTime)]                                    // WotlK
+	var durability = values[fieldIndex(fieldDurability)]
+
+	var lastField string
+	switch chosenExp {
+	case ExpVanilla:
+		fallthrough
+	case ExpTBC:
+		lastField = textId
+	case ExpWotLK:
+		lastField = playedTime
+	}
 
 	return " (" +
 		itemGuid + ", " +
@@ -165,7 +185,7 @@ func ParseDataBlob(blob string) string {
 		"'" + enchantments + "'" + ", " +
 		fmt.Sprintf("%d", randomPropertyId) + ", " +
 		durability + ", " +
-		textId +
+		lastField + // Either textId or playedTime depending on expansion.
 		")"
 }
 
@@ -178,9 +198,30 @@ func stringToUint32(str string) uint32 {
 	return uint32(result)
 }
 
+func PromptExpansionSelection() {
+	fmt.Println("Choose expansion for migration (type 1, 2, or 3 and press Enter):")
+	fmt.Println(" 1. Vanilla (mangos-classic)")
+	fmt.Println(" 2. TBC (mangos-tbc)")
+	fmt.Println(" 3. WotLK (mangos-wotlk)")
+	fmt.Print("Choice: ")
+
+	fmt.Scanf("%d", &chosenExp)
+
+	switch chosenExp {
+	case ExpVanilla:
+	case ExpTBC:
+	case ExpWotLK:
+	default:
+		log.Fatal("Invalid expansion type specified. Please specify between 1 and 3.")
+	}
+	fmt.Println("---------------------------------")
+	fmt.Println()
+}
+
 func HandleConnectDB() *sql.DB {
 	var host, port, user, pass, database string
 
+	fmt.Println("Database connection credentials:")
 	fmt.Println("Host:")
 	fmt.Scanf("%s", &host)
 
@@ -219,4 +260,96 @@ func HandleConnectDB() *sql.DB {
 	log.Println("Database connection established.\n")
 
 	return session
+}
+
+type expansion uint8
+
+const (
+	ExpVanilla expansion = 1
+	ExpTBC               = 2
+	ExpWotLK             = 3
+)
+
+type field uint8
+
+// Item field references (changes depending on expansion).
+const (
+	fieldItemGuid field = iota
+	fieldItemEntry
+	fieldOwnerGuid
+	fieldCreatorGuid
+	fieldGiftCreator
+	fieldStackCount
+	fieldDuration
+	fieldSpellChargesStart
+	fieldSpellChargesEnd
+	fieldFlags
+	fieldEnchantmentsStart
+	fieldEnchantmentsEnd
+	fieldRandomPropertyId
+	fieldTextId
+	fieldDurability
+	fieldPlayedTime // WotLK only
+)
+
+var fieldExpMapper = map[expansion]map[field]uint8{
+	ExpVanilla: {
+		fieldItemGuid:          0,
+		fieldItemEntry:         3,
+		fieldOwnerGuid:         6,
+		fieldCreatorGuid:       10,
+		fieldGiftCreator:       12,
+		fieldStackCount:        14,
+		fieldDuration:          15,
+		fieldSpellChargesStart: 16,
+		fieldSpellChargesEnd:   20,
+		fieldFlags:             21,
+		fieldEnchantmentsStart: 22,
+		fieldEnchantmentsEnd:   42,
+		fieldRandomPropertyId:  44,
+		fieldTextId:            45,
+		fieldDurability:        46,
+	},
+	ExpTBC: {
+		fieldItemGuid:          0,
+		fieldItemEntry:         3,
+		fieldOwnerGuid:         6,
+		fieldCreatorGuid:       10,
+		fieldGiftCreator:       12,
+		fieldStackCount:        14,
+		fieldDuration:          15,
+		fieldSpellChargesStart: 16,
+		fieldSpellChargesEnd:   20,
+		fieldFlags:             21,
+		fieldEnchantmentsStart: 22,
+		fieldEnchantmentsEnd:   55,
+		fieldRandomPropertyId:  56,
+		fieldTextId:            57,
+		fieldDurability:        58,
+	},
+	ExpWotLK: {
+		fieldItemGuid:          0,
+		fieldItemEntry:         3,
+		fieldOwnerGuid:         6,
+		fieldCreatorGuid:       10,
+		fieldGiftCreator:       12,
+		fieldStackCount:        14,
+		fieldDuration:          15,
+		fieldSpellChargesStart: 16,
+		fieldSpellChargesEnd:   20,
+		fieldFlags:             21,
+		fieldEnchantmentsStart: 22,
+		fieldEnchantmentsEnd:   57,
+		fieldRandomPropertyId:  58,
+		fieldDurability:        60,
+		fieldPlayedTime:        62,
+	},
+}
+
+// Provided by user.
+var chosenExp expansion
+
+// fieldIndex returns the item field index for the chosen expansion.
+func fieldIndex(field field) uint8 {
+	return fieldExpMapper[chosenExp][field]
 }

@@ -44,22 +44,41 @@ func main() {
 	log.Printf("Counted %v entries.\n\n", totalEntries)
 
 	log.Println("Loading all item instance entries...")
-	rows, err := db.Query("SELECT `data` FROM `item_instance`")
+	var query string
+	switch chosenExp {
+	case ExpWotLK:
+		query = "SELECT `guid`, `data`, `text` FROM `item_instance`"
+	default:
+		query = "SELECT `data` FROM `item_instance`"
+	}
+	rows, err := db.Query(query)
 	if err != nil {
 		log.Println(err)
 	}
 
 	// Create slice with capacity for all entries.
 	blobResults := make([]string, 0, totalEntries)
+	texts := make([]string, 0, totalEntries)
 
 	var data string
+	var text sql.NullString
+	var guid uint32
+
 	for rows.Next() {
-		err = rows.Scan(&data)
+		switch chosenExp {
+		case ExpWotLK:
+			err = rows.Scan(&guid, &data, &text)
+		default:
+			err = rows.Scan(&data)
+		}
 		if err != nil {
 			log.Println(err)
 		}
 
 		blobResults = append(blobResults, data)
+		if chosenExp == ExpWotLK {
+			texts = append(texts, text.String)
+		}
 	}
 	log.Printf("Loaded.\n\n")
 
@@ -80,10 +99,10 @@ func main() {
 	entireQuery.WriteString(" ADD `count` INT(10) UNSIGNED NOT NULL DEFAULT '1' AFTER `giftCreatorGuid`,\n")
 	entireQuery.WriteString(" ADD `duration` INT(10) UNSIGNED NOT NULL AFTER `count`,\n")
 	entireQuery.WriteString(" ADD `charges` TEXT NOT NULL AFTER `duration`,\n")
-	entireQuery.WriteString(" ADD `flags` INT(10) UNSIGNED NOT NULL DEFAULT '0' AFTER `charges`,\n")
+	entireQuery.WriteString(" ADD `flags` INT(8) UNSIGNED NOT NULL DEFAULT '0' AFTER `charges`,\n")
 	entireQuery.WriteString(" ADD `enchantments` TEXT NOT NULL AFTER `flags`,\n")
-	entireQuery.WriteString(" ADD `randomPropertyId` INT(11) NOT NULL DEFAULT '0' AFTER `enchantments`,\n")
-	entireQuery.WriteString(" ADD `durability` INT(10) UNSIGNED NOT NULL DEFAULT '0' AFTER `randomPropertyId`,\n")
+	entireQuery.WriteString(" ADD `randomPropertyId` SMALLINT(5) NOT NULL DEFAULT '0' AFTER `enchantments`,\n")
+	entireQuery.WriteString(" ADD `durability` INT(5) UNSIGNED NOT NULL DEFAULT '0' AFTER `randomPropertyId`,\n")
 
 	switch chosenExp {
 	case ExpVanilla:
@@ -100,8 +119,9 @@ func main() {
 		}
 
 		blob := blobResults[i]
+		text := texts[i]
 
-		entireQuery.WriteString(ParseDataBlob(blob))
+		entireQuery.WriteString(ParseDataBlob(blob, text))
 
 		if i == len(blobResults)-1 || (i > 0 && (i+1)%EntriesPerInsert == 0) {
 			entireQuery.WriteString(";\n")
@@ -125,7 +145,7 @@ func main() {
 	log.Println("Done.")
 }
 
-func ParseDataBlob(blob string) string {
+func ParseDataBlob(blob, text string) string {
 	values := strings.Split(blob, " ")
 	var itemGuid = values[fieldIndex(fieldItemGuid)]
 	var itemEntry = values[fieldIndex(fieldItemEntry)]
@@ -136,7 +156,7 @@ func ParseDataBlob(blob string) string {
 	var duration = values[fieldIndex(fieldDuration)]
 
 	var spellCharges string
-	for i := fieldIndex(fieldSpellChargesStart); i < fieldIndex(fieldSpellChargesEnd); i++ {
+	for i := fieldIndex(fieldSpellChargesStart); i <= fieldIndex(fieldSpellChargesEnd); i++ {
 		if i != fieldIndex(fieldSpellChargesStart) {
 			spellCharges += " "
 		}
@@ -148,7 +168,7 @@ func ParseDataBlob(blob string) string {
 	var flags = values[fieldIndex(fieldFlags)]
 
 	var enchantments string
-	for i := fieldIndex(fieldEnchantmentsStart); i < fieldIndex(fieldEnchantmentsEnd); i++ {
+	for i := fieldIndex(fieldEnchantmentsStart); i <= fieldIndex(fieldEnchantmentsEnd); i++ {
 		if i != fieldIndex(fieldEnchantmentsStart) {
 			enchantments += " "
 		}
@@ -158,18 +178,16 @@ func ParseDataBlob(blob string) string {
 	}
 
 	var randomPropertyId = int32(stringToUint32(values[fieldIndex(fieldRandomPropertyId)])) // Stored as uint32, but we want int32 representation.
-	var textId = values[fieldIndex(fieldTextId)]                                            // Vanilla/TBC
-	var playedTime = values[fieldIndex(fieldPlayedTime)]                                    // WotlK
 	var durability = values[fieldIndex(fieldDurability)]
 
-	var lastField string
+	var lastField string // Either textId or playedTime depending on expansion.
 	switch chosenExp {
 	case ExpVanilla:
 		fallthrough
 	case ExpTBC:
-		lastField = textId
+		lastField = values[fieldIndex(fieldTextId)]
 	case ExpWotLK:
-		lastField = playedTime
+		lastField = values[fieldIndex(fieldPlayedTime)] + ", \"" + text + "\""
 	}
 
 	return " (" +
@@ -185,7 +203,7 @@ func ParseDataBlob(blob string) string {
 		"'" + enchantments + "'" + ", " +
 		fmt.Sprintf("%d", randomPropertyId) + ", " +
 		durability + ", " +
-		lastField + // Either textId or playedTime depending on expansion.
+		lastField +
 		")"
 }
 
@@ -203,7 +221,7 @@ func PromptExpansionSelection() {
 	fmt.Println(" 1. Vanilla (mangos-classic)")
 	fmt.Println(" 2. TBC (mangos-tbc)")
 	fmt.Println(" 3. WotLK (mangos-wotlk)")
-	fmt.Print("Choice: ")
+	fmt.Print("> ")
 
 	fmt.Scanf("%d", &chosenExp)
 
@@ -322,7 +340,7 @@ var fieldExpMapper = map[expansion]map[field]uint8{
 		fieldSpellChargesEnd:   20,
 		fieldFlags:             21,
 		fieldEnchantmentsStart: 22,
-		fieldEnchantmentsEnd:   55,
+		fieldEnchantmentsEnd:   54,
 		fieldRandomPropertyId:  56,
 		fieldTextId:            57,
 		fieldDurability:        58,
@@ -340,7 +358,7 @@ var fieldExpMapper = map[expansion]map[field]uint8{
 		fieldFlags:             21,
 		fieldEnchantmentsStart: 22,
 		fieldEnchantmentsEnd:   57,
-		fieldRandomPropertyId:  58,
+		fieldRandomPropertyId:  59,
 		fieldDurability:        60,
 		fieldPlayedTime:        62,
 	},

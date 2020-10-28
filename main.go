@@ -119,7 +119,11 @@ func main() {
 		}
 
 		blob := blobResults[i]
-		text := texts[i]
+		text := ""
+
+		if chosenExp == ExpWotLK {
+			text = texts[i]
+		}
 
 		entireQuery.WriteString(ParseDataBlob(blob, text))
 

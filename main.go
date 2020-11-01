@@ -93,34 +93,8 @@ func main() {
 	parseStart := time.Now()
 	log.Println("Beginning parse... this may take a minute or two.")
 
-	// Way faster than concatenating strings
+	// Way faster than concatenating strings.
 	var entireQuery strings.Builder
-
-	entireQuery.WriteString("TRUNCATE `item_instance`;\n")
-
-	entireQuery.WriteString("ALTER TABLE `item_instance` DROP `data`;\n\n")
-
-	entireQuery.WriteString("ALTER TABLE `item_instance`\n")
-	entireQuery.WriteString(" ADD `itemEntry` MEDIUMINT(8) UNSIGNED NOT NULL DEFAULT '0' AFTER `owner_guid`,\n")
-	entireQuery.WriteString(" ADD `creatorGuid` INT(10) UNSIGNED NOT NULL DEFAULT '0' AFTER `itemEntry`,\n")
-	entireQuery.WriteString(" ADD `giftCreatorGuid` INT(10) UNSIGNED NOT NULL DEFAULT '0' AFTER `creatorGuid`,\n")
-	entireQuery.WriteString(" ADD `count` INT(10) UNSIGNED NOT NULL DEFAULT '1' AFTER `giftCreatorGuid`,\n")
-	entireQuery.WriteString(" ADD `duration` INT(10) UNSIGNED NOT NULL AFTER `count`,\n")
-	entireQuery.WriteString(" ADD `charges` TEXT NOT NULL AFTER `duration`,\n")
-	entireQuery.WriteString(" ADD `flags` INT(8) UNSIGNED NOT NULL DEFAULT '0' AFTER `charges`,\n")
-	entireQuery.WriteString(" ADD `enchantments` TEXT NOT NULL AFTER `flags`,\n")
-	entireQuery.WriteString(" ADD `randomPropertyId` SMALLINT(5) NOT NULL DEFAULT '0' AFTER `enchantments`,\n")
-	entireQuery.WriteString(" ADD `durability` INT(5) UNSIGNED NOT NULL DEFAULT '0' AFTER `randomPropertyId`,\n")
-
-	switch chosenExp {
-	case ExpVanilla:
-		fallthrough
-	case ExpTBC:
-		entireQuery.WriteString(" ADD `itemTextId` MEDIUMINT(8) UNSIGNED NOT NULL DEFAULT '0' AFTER `durability`;\n\n")
-	case ExpWotLK:
-		entireQuery.WriteString(" ADD `playedTime` INT(10) UNSIGNED NOT NULL DEFAULT '0' AFTER `durability`;\n\n")
-	}
-
 	for i := range blobResults {
 		if i%EntriesPerInsert == 0 {
 			entireQuery.WriteString("INSERT INTO `item_instance` VALUES \n")

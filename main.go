@@ -19,9 +19,17 @@ import (
 const EntriesPerInsert = 25000
 
 func main() {
-	fmt.Println("\n\n####################################################")
-	fmt.Println("# BACKUP YOUR DATABASE BEFORE RUNNING THIS SCRIPT! #")
-	fmt.Println("####################################################")
+	fmt.Println("\n\n########################################################")
+	fmt.Println("# BACKUP YOUR DATABASE BEFORE RUNNING THIS SCRIPT!     #")
+	fmt.Println("#    If you are migrating existing cmangos data you    #")
+	fmt.Println("#    *MUST* perform this migration BEFORE applying     #")
+	fmt.Println("#    the characters db SQL update script!              #")
+	fmt.Println("########################################################")
+	fmt.Println("#  This script will take your existing item_instance   #")
+	fmt.Println("#  data and convert it to the new format. Then, run    #")
+	fmt.Println("#  the cmangos character db update script as normal.   #")
+	fmt.Println("#  Lastly, run the output script generated from here.  #")
+	fmt.Println("########################################################")
 	fmt.Println()
 
 	PromptExpansionSelection()
